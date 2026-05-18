@@ -55,28 +55,34 @@ For exact input/output schemas, run `tools/list` via MCP Inspector or check `src
 
 ---
 
-## 🚀 Install & build
+## 🚀 Installation
+
+The server is published on npm as [`pubmed_mcp_server2`](https://www.npmjs.com/package/pubmed_mcp_server2). For Claude Desktop you don't need to install anything manually — `npx -y pubmed_mcp_server2` will fetch and run it.
+
+If you'd rather build from source (development):
 
 ```bash
 git clone https://github.com/masa061580/pubmed_mcp_server2.git
 cd pubmed_mcp_server2
 npm install
-npm run build
+npm run build      # produces dist/index.js
 ```
-
-This produces `dist/index.js` — the executable entry point.
 
 ### Smoke test (optional)
 
 ```bash
+# From a clone:
 ( echo '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
   echo '{"jsonrpc":"2.0","method":"notifications/initialized"}'
   echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
   sleep 1
 ) | node dist/index.js
+
+# Or directly from npm:
+npx -y pubmed_mcp_server2
 ```
 
-The second response should list all 10 tools.
+The server should list all 10 tools.
 
 ---
 
@@ -86,6 +92,24 @@ Edit (create if missing):
 
 - **macOS** — `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows** — `%APPDATA%\Claude\claude_desktop_config.json`
+
+### Recommended (via npm)
+
+```json
+{
+  "mcpServers": {
+    "pubmed": {
+      "command": "npx",
+      "args": ["-y", "pubmed_mcp_server2"],
+      "env": {
+        "NCBI_API_KEY": ""
+      }
+    }
+  }
+}
+```
+
+### Alternative (from a local clone)
 
 ```json
 {
@@ -104,9 +128,10 @@ Edit (create if missing):
 ```
 
 Notes:
-- Use the **absolute path** to `dist/index.js`.
-- If you use `nvm`, set `"command"` to the absolute node binary (e.g. `/Users/you/.nvm/versions/node/v20.x.x/bin/node`) — Claude Desktop's PATH may not include nvm shims.
-- Set `NCBI_API_KEY` to your key, or remove the env block entirely if you don't have one.
+- Set `NCBI_API_KEY` to your key, or remove the env block entirely if you don't have one. With a key the rate limit goes from 3 req/s → 10 req/s.
+- **Windows users**: if `npx` is not on PATH inside Claude Desktop, use the full path to `npx.cmd` (e.g. `C:\\Program Files\\nodejs\\npx.cmd`).
+- **macOS + nvm**: if Claude Desktop can't find `npx`, replace `"command": "npx"` with the absolute path (e.g. `/Users/you/.nvm/versions/node/v20.x.x/bin/npx`). Claude Desktop's PATH may not include nvm shims.
+- For the local-clone variant, use the **absolute path** to `dist/index.js` and run `npm run build` first.
 - **Fully quit and relaunch** Claude Desktop after editing (Cmd+Q on macOS).
 
 ### Logs
@@ -120,6 +145,10 @@ tail -f "$HOME/Library/Logs/Claude/mcp-server-pubmed.log"
 ## 🛠️ MCP Inspector
 
 ```bash
+# Run the published package directly:
+npx @modelcontextprotocol/inspector npx -y pubmed_mcp_server2
+
+# Or inspect a local build:
 npx @modelcontextprotocol/inspector node /ABSOLUTE/PATH/TO/dist/index.js
 ```
 
