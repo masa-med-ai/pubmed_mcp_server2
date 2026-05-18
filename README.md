@@ -55,6 +55,22 @@ For exact input/output schemas, run `tools/list` via MCP Inspector or check `src
 
 ---
 
+## 🔑 Getting an NCBI API key (optional but recommended)
+
+Without a key, NCBI limits you to **3 requests/sec**. With a free personal key, the limit goes up to **10 requests/sec** — noticeable when running `batch_process` or large `search` paginations.
+
+1. Create / sign in to an NCBI account: <https://account.ncbi.nlm.nih.gov/>
+2. Open **Account settings** (top-right menu → *Account settings*) → scroll to **API Key Management** at the bottom of the page.
+   - Direct link: <https://account.ncbi.nlm.nih.gov/settings/> (look for "API Key Management")
+3. Click **Create an API Key**. A 36-character hex string is generated immediately.
+4. Copy that string and put it in the `NCBI_API_KEY` env var in your `claude_desktop_config.json` (see the Claude Desktop section below).
+
+The key is tied to your NCBI account; revoke or rotate it any time from the same page. Don't commit it to git or share it — it's effectively your identity on the E-utilities API.
+
+> 📚 Official policy: <https://support.nlm.nih.gov/kbArticle/?pn=KA-05317>
+
+---
+
 ## 🚀 Installation
 
 The server is published on npm as [`pubmed_mcp_server2`](https://www.npmjs.com/package/pubmed_mcp_server2). For Claude Desktop you don't need to install anything manually — `npx -y pubmed_mcp_server2` will fetch and run it.
