@@ -1,7 +1,7 @@
 {
   "name": "pubmed_mcp_server2",
-  "version": "1.0.2",
-  "description": "Advanced Model Context Protocol server for PubMed database access with MeSH optimization and citation analysis",
+  "version": "2.0.0",
+  "description": "Local stdio MCP server for PubMed with 10 tools: search, fetch, fetch_batch, get_full_text, count, find_similar_articles, export_to_ris, get_citation_counts, convert_ids, batch_process",
   "main": "dist/index.js",
   "type": "module",
   "bin": {
@@ -14,17 +14,17 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YOUR_USERNAME/pubmed_mcp_server2.git"
+    "url": "git+https://github.com/masa061580/pubmed_mcp_server2.git"
   },
   "bugs": {
-    "url": "https://github.com/YOUR_USERNAME/pubmed_mcp_server2/issues"
+    "url": "https://github.com/masa061580/pubmed_mcp_server2/issues"
   },
-  "homepage": "https://github.com/YOUR_USERNAME/pubmed_mcp_server2#readme",
+  "homepage": "https://github.com/masa061580/pubmed_mcp_server2#readme",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js",
-    "clean": "rmdir /s /q dist 2>nul || echo \"dist directory cleaned\"",
+    "clean": "rm -rf dist",
     "prebuild": "npm run clean",
     "prepublishOnly": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -48,13 +48,13 @@
   "author": "Claude",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "zod": "^3.22.0",
-    "xml2js": "^0.6.2"
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "he": "^1.2.0",
+    "zod": "^3.24.4"
   },
   "devDependencies": {
+    "@types/he": "^1.2.3",
     "@types/node": "^20.0.0",
-    "@types/xml2js": "^0.4.14",
     "typescript": "^5.0.0"
   },
   "engines": {

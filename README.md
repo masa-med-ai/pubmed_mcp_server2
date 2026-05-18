@@ -1,329 +1,166 @@
-# PubMed MCP Server v2 (Version 1.0.2)
+# PubMed MCP Server v2.0.0
 
-A comprehensive Model Context Protocol (MCP) server that provides advanced access to the PubMed database for biomedical literature search, retrieval, and analysis. This server transforms natural language queries into optimized PubMed searches using MeSH terms and provides citation analysis capabilities.
+A local **Model Context Protocol (MCP)** server that exposes the NCBI PubMed / PubMed Central / iCite APIs to MCP-compatible clients (Claude Desktop, MCP Inspector, etc.) over **stdio**.
 
-## 🚀 Features
+This version (`2.0.0`) is a complete rewrite of the tool layer to provide **feature parity with the remote OAuth-protected sibling project [`pubmed-mcp-remote-Oauth-`](https://github.com/masa061580/pubmed-mcp-remote-Oauth-)** — all 10 tools are identical in name, schema, and behavior. The local build simply drops OAuth and runs on stdio so it can be wired into Claude Desktop without authentication.
 
-### 🔧 Tools
+---
 
-- **`search_pubmed`**: Search PubMed database with comprehensive article summaries, abstracts, and metadata
-- **`get_full_abstract`**: Retrieve complete, untruncated abstracts for specific articles by PMID
-- **`get_full_text`**: Extract full text content from PubMed Central (PMC) open access articles
-- **`export_ris`**: Export citations in RIS format for reference management software (Zotero, Mendeley, EndNote)
-- **`get_citation_counts`**: Analyze citation metrics and find citing articles using NCBI elink API
-- **`optimize_search_query`** ✨: Transform natural language queries into optimized PubMed searches with MeSH terms and field tags
-- **`find_similar_articles`**: Find articles similar to a given PMID using NCBI's similarity algorithm with relevance scores
-- **`batch_process`** 🆕: Process multiple PMIDs with multiple operations efficiently for bulk analysis
+## ✨ What's new in v2.0.0
 
-### 📚 Resources
+| | v1.0.2 (legacy) | **v2.0.0 (this release)** |
+|---|---|---|
+| Tools | 8 tools (`search_pubmed`, `get_full_abstract`, …) | **10 tools** with new schema (see below) |
+| Output format | Markdown-formatted strings | Structured **JSON** for every tool (token-efficient, parser-friendly) |
+| Search | Single sort, no filters | `output_mode` (minimal/compact/full), pagination, structured filters (date range, publication types, languages, humans-only, has-abstract, free full text) |
+| Full text | Whole-article dump | Section-aware extraction (abstract / introduction / methods / results / discussion / conclusions / references) |
+| Citations | `elink` only | **iCite** by default (counts include non-PubMed citations) + `elink` mode for citing-PMIDs |
+| ID conversion | — | **New** `convert_ids` (PMID ↔ PMCID ↔ DOI) |
+| Bulk fetch | — | **New** `fetch_batch` |
+| Count-only query | — | **New** `count` tool for fast query refinement |
+| HTML entities | Raw | Decoded via `he` |
+| 429 handling | — | Exponential-backoff retry (1s/2s/4s) |
+| Module structure | Single `pubmed-api.ts` | Split into `pubmed-client.ts` (transport) / `tools.ts` (MCP) / `ris-exporter.ts` |
 
-- **`pubmed://search/{query}`**: Access search results as structured JSON resource
+**Breaking change**: tool names and response shapes have changed. If you were using v1.x, update your client prompts to the new names.
 
-### 💡 Prompts
+---
 
-- **`generate_search_query`**: Interactive assistant for creating effective PubMed search strategies
+## 🔧 Tools (10)
+
+All tools return JSON in `content[0].text`.
+
+| # | Tool | Purpose |
+|---|---|---|
+| 1 | **`search`** | PubMed search with MeSH support, pagination (`retmax`/`retstart`), sort (`relevance`/`pub_date`/`first_author`), `output_mode` (minimal/compact/full), and structured `filters` |
+| 2 | **`fetch`** | Single-PMID abstract (OpenAI MCP–compliant document shape) |
+| 3 | **`fetch_batch`** | Multiple-PMID abstracts in one call; optional `include_abstract` flag |
+| 4 | **`get_full_text`** | PMC full text via JATS XML; section filter `[abstract, introduction, methods, results, discussion, conclusions, references, all]`; max 20 PMCIDs |
+| 5 | **`count`** | Result count only — fast query refinement |
+| 6 | **`find_similar_articles`** | NCBI `elink pubmed_pubmed` similarity |
+| 7 | **`export_to_ris`** | Compact RIS for EndNote/Zotero/Mendeley (citation manager auto-fetches full metadata via PMID) |
+| 8 | **`get_citation_counts`** | iCite (default, counts only) or `elink` (PubMed-internal, with citing PMIDs) |
+| 9 | **`convert_ids`** | PMID ↔ PMCID ↔ DOI via NCBI ID Converter API |
+| 10 | **`batch_process`** | Run any subset of `[abstract, citations, similar, ris_export, full_text]` against the same PMID set with bounded concurrency |
+
+For exact input/output schemas, run `tools/list` via MCP Inspector or check `src/tools.ts`.
+
+---
 
 ## 📋 Prerequisites
 
-- Node.js v18.x or higher
-- npm or yarn package manager
+- **Node.js ≥ 18** (uses global `fetch` and `AbortSignal.timeout`)
+- npm
+- *(optional)* an [NCBI API key](https://www.ncbi.nlm.nih.gov/account/settings/) — raises the rate limit from 3 req/s to 10 req/s
 
-## 🎯 Usage
+---
 
-### Method 1: NPM Package (Recommended)
+## 🚀 Install & build
 
-**Benefits**: Easy installation, automatic updates, no local build required.
+```bash
+git clone https://github.com/masa061580/pubmed_mcp_server2.git
+cd pubmed_mcp_server2
+npm install
+npm run build
+```
 
+This produces `dist/index.js` — the executable entry point.
 
-#### Claude Desktop Configuration
-Add to your Claude Desktop configuration file:
+### Smoke test (optional)
 
-**Windows**: `%APPDATA%\\Claude\\claude_desktop_config.json`
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+```bash
+( echo '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'
+  echo '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+  echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+  sleep 1
+) | node dist/index.js
+```
+
+The second response should list all 10 tools.
+
+---
+
+## 🖥️ Claude Desktop configuration
+
+Edit (create if missing):
+
+- **macOS** — `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows** — `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
     "pubmed": {
-      "command": "npx",
-      "args": ["-y", "pubmed_mcp_server2"]
-    }
-  }
-}
-```
-
-#### Claude Code Configuration
-```bash
-claude mcp add pubmed -s project -- cmd /c npx pubmed_mcp_server2
-```
-
-### Method 2: Local Development
-
-**Use case**: For development, customization, or when you want to modify the source code.
-## 🛠️ Installation
-
-1. Clone this repository:
-```bash
-git clone https://github.com/YOUR_USERNAME/pubmed_mcp_server2.git
-cd pubmed_mcp_server2
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Build the server:
-```bash
-npm run build
-```
-
-#### Claude Desktop Integration (Local)
-
-Add to your Claude Desktop configuration file:
-
-**Windows**: `%APPDATA%\\Claude\\claude_desktop_config.json`
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "pubmed-server": {
       "command": "node",
-      "args": ["C:\\path\\to\\pubmed_mcp_server2\\dist\\index.js"],
-      "env": {}
+      "args": [
+        "/ABSOLUTE/PATH/TO/pubmed_mcp_server2/dist/index.js"
+      ],
+      "env": {
+        "NCBI_API_KEY": ""
+      }
     }
   }
 }
 ```
 
-Replace the path with your actual installation directory.
+Notes:
+- Use the **absolute path** to `dist/index.js`.
+- If you use `nvm`, set `"command"` to the absolute node binary (e.g. `/Users/you/.nvm/versions/node/v20.x.x/bin/node`) — Claude Desktop's PATH may not include nvm shims.
+- Set `NCBI_API_KEY` to your key, or remove the env block entirely if you don't have one.
+- **Fully quit and relaunch** Claude Desktop after editing (Cmd+Q on macOS).
 
-### Example Usage
-
-#### 1. Query Optimization
-```
-Input: "covid vaccine effectiveness in elderly"
-→ Transforms to: ("COVID-19"[MeSH Terms] OR "SARS-CoV-2"[MeSH Terms]) AND ("Vaccination"[MeSH Terms]) AND ("Treatment Outcome"[MeSH Terms]) AND ("Aged"[MeSH Terms])
-```
-
-#### 2. Basic Literature Search
-```
-search_pubmed: "diabetes treatment 2023"
-→ Returns: Detailed articles with abstracts, PMIDs, DOIs, and citation metrics
-```
-
-#### 3. Citation Analysis
-```
-get_citation_counts: "36038128, 30105375"
-→ Returns: Citation counts and lists of citing articles for each PMID
-```
-
-#### 4. Reference Management
-```
-export_ris: "36038128, 30105375"
-→ Returns: RIS formatted citations ready for import into reference managers
-```
-
-#### 5. Find Similar Articles
-```
-find_similar_articles: "36038128"
-→ Returns: Up to 10 similar articles ranked by NCBI's similarity algorithm
-→ Each result includes similarity score, title, authors, abstract preview
-```
-
-#### 6. Batch Processing (NEW in v1.0.2)
-```
-batch_process: {pmids: ["36038128", "35105375"], operations: ["abstract", "citations"]}
-→ Returns: Comprehensive analysis of multiple articles in one request
-→ Supports: abstract, citations, similar, ris_export, full_text operations
-```
-
-## 🧠 MeSH Term Optimization
-
-The server includes an extensive database of medical term mappings covering:
-
-- **COVID-19 & Vaccines**: covid, coronavirus, vaccination, immunization
-- **Cardiovascular**: heart attack, myocardial infarction, cardiovascular disease
-- **Cancer**: cancer, tumor, oncology, carcinoma
-- **Mental Health**: depression, anxiety, psychiatric disorders
-- **Age Groups**: elderly, children, pediatric, adolescent
-- **Study Types**: clinical trial, meta-analysis, systematic review, RCT
-- **Treatment Types**: therapy, surgery, medication, drug treatment
-
-## 🔧 Advanced Search Features
-
-### Field Tags Supported
-- `[ti]` - Title
-- `[ab]` - Abstract
-- `[au]` - Author
-- `[ta]` - Journal Title
-- `[MeSH Terms]` - Medical Subject Headings
-- `[tw]` - Text Word
-- `[pt]` - Publication Type
-- `[pdat]` - Publication Date
-
-### Boolean Operators
-- `AND` - All terms must be present
-- `OR` - Any of the terms can be present
-- `NOT` - Exclude specific terms
-- Parentheses for grouping complex queries
-
-## 📊 API Endpoints & Rate Limiting
-
-### NCBI E-utilities APIs Used
-- **ESearch**: Search and retrieve primary IDs
-- **EFetch**: Retrieve full records and abstracts
-- **ESummary**: Retrieve document summaries
-- **ELink**: Find related articles and citations
-- **Literature Citation Exporter**: RIS format export
-
-### Rate Limiting & Limits
-- **Search results**: Maximum 100 articles per query
-- **Citation analysis**: Maximum 20 PMIDs per request
-- **RIS export**: Maximum 50 PMIDs per batch
-- **Full text**: Maximum 10 PMC articles per request
-- **Similar articles**: Maximum 50 similar articles per PMID (default: 10)
-- **Batch processing**: Maximum 50 PMIDs per batch with up to 5 concurrent operations
-- **API delays**: 200-600ms between requests to respect NCBI guidelines
-
-## ⚙️ Configuration
-
-### Customizable Parameters
-
-Edit `src/pubmed-api.ts` to modify:
-
-```typescript
-// Email for NCBI API (required by NCBI guidelines)
-email: 'your-email@example.com'
-
-// Rate limiting delays
-const delayBetweenRequests = 200; // milliseconds
-
-// Result limits
-const maxResults = 100; // search results
-const maxPmids = 20;    // citation analysis
-```
-
-## 🔍 Error Handling
-
-Comprehensive error handling for:
-- Network connectivity issues
-- Invalid PMIDs or queries
-- API rate limiting and timeouts
-- XML/JSON parsing errors
-- Missing full text content
-- Citation data unavailability
-
-## 🚧 Development
-
-### Available Scripts
+### Logs
 
 ```bash
-npm run build      # Compile TypeScript
-npm run dev        # Build and run in development
-npm run clean      # Remove compiled files
-npm run start      # Start the compiled server
+tail -f "$HOME/Library/Logs/Claude/mcp-server-pubmed.log"
 ```
 
-### Project Structure
+---
 
-```
-pubmed_mcp_server2/
-├── src/
-│   ├── index.ts           # Main MCP server setup and tool registration
-│   └── pubmed-api.ts      # PubMed API integration and utilities
-├── dist/                  # Compiled JavaScript output
-├── package.json           # Dependencies and scripts
-├── tsconfig.json          # TypeScript configuration
-└── README.md             # This file
-```
+## 🛠️ MCP Inspector
 
-### Adding New Features
-
-1. **New MeSH mappings**: Add to `MESH_MAPPINGS` object in `pubmed-api.ts`
-2. **New tools**: Register in `index.ts` using `server.registerTool()`
-3. **Field tags**: Add to `FIELD_TAGS` object for query optimization
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes and test thoroughly
-4. Commit with descriptive messages: `git commit -m "Add feature description"`
-5. Push to your branch: `git push origin feature-name`
-6. Submit a pull request
-
-## 📖 Documentation
-
-### PubMed Search Tips
-
-1. **Use MeSH terms** for standardized medical vocabulary
-2. **Combine multiple concepts** with AND/OR operators
-3. **Use field tags** to target specific parts of articles
-4. **Add date ranges** to focus on recent research
-5. **Filter by publication type** for specific study designs
-
-### Reference Management Integration
-
-The RIS export feature supports:
-- **Zotero**: File → Import
-- **Mendeley**: File → Import → RIS
-- **EndNote**: File → Import → File
-- **Papers**: Import → From File
-- **RefWorks**: Import → References
-
-## 🛡️ Privacy & Ethics
-
-- No user data is stored or logged
-- All queries are sent directly to NCBI APIs
-- Complies with NCBI usage guidelines
-- Respects API rate limits and terms of service
-
-## 📄 License
-
-MIT License - see LICENSE file for details
-
-## 🙋‍♂️ Support
-
-For issues, questions, or contributions:
-1. Check existing issues on GitHub
-2. Create a new issue with detailed description
-3. Include error messages and steps to reproduce
-
-## 📦 Installation Options
-
-### Quick Start (NPM)
 ```bash
-npm install -g pubmed_mcp_server2
+npx @modelcontextprotocol/inspector node /ABSOLUTE/PATH/TO/dist/index.js
 ```
 
-### Update to Latest Version
-```bash
-npm update -g pubmed_mcp_server2
+---
+
+## 📦 Project structure
+
+```
+src/
+├── index.ts          # stdio entry point — registers tools, connects transport
+├── tools.ts          # 10 MCP tool definitions (zod schemas + handlers)
+├── pubmed-client.ts  # NCBI E-utilities / iCite / ID-Converter client (XML parsing, 429 retry, timeouts)
+└── ris-exporter.ts   # Minimal RIS format generator
 ```
 
-## 📝 Version History
+The server is **stateless** — every request creates fresh state. Safe for concurrent invocations.
 
-### v1.0.2 (Latest)
-- 🆕 **Batch Processing**: Process multiple PMIDs with multiple operations efficiently
-- 🔧 **Flexible Input**: Support for array, space-separated, and comma-separated PMID input
-- 📊 **Enhanced Analytics**: Improved citation analysis and error reporting
-- ⚡ **Performance**: Optimized API rate limiting and concurrent processing
+---
 
-### v1.0.1  
-- 🆕 **Similar Articles**: Find articles similar to a given PMID using NCBI's algorithm
-- 🎯 **Improved Relevance**: Similarity scores and ranking
-- 🔧 **Bug Fixes**: Enhanced error handling and API stability
+## 🤝 Sibling project
 
-### v1.0.0
-- 🚀 **Initial Release**: Core PubMed search and analysis functionality
-- 📖 **Full Features**: Search, abstracts, citations, RIS export, query optimization
+A remote, OAuth-protected variant deployed on Cloudflare Workers lives at:
+👉 [masa061580/pubmed-mcp-remote-Oauth-](https://github.com/masa061580/pubmed-mcp-remote-Oauth-)
 
-## 🔗 Related Resources
+Both servers expose the **same 10 tools with identical schemas**, so client prompts/workflows are portable between them.
 
-- [NCBI E-utilities Documentation](https://www.ncbi.nlm.nih.gov/books/NBK25497/)
-- [PubMed Search Tips](https://pubmed.ncbi.nlm.nih.gov/help/)
-- [MeSH Database](https://www.ncbi.nlm.nih.gov/mesh/)
-- [Model Context Protocol](https://modelcontextprotocol.io/)
-- [Claude Desktop](https://claude.ai/download)
+---
+
+## 📚 NCBI Compliance
+
+This server respects NCBI E-utilities guidelines:
+- Sends `tool` and `email` parameters on every request
+- Honors rate limits (3 req/s without key, 10 req/s with key)
+- Uses POST for large ID lists (`efetch`)
+- Retries 429 with exponential backoff (max 3 attempts)
+- 30s `AbortSignal.timeout` on every fetch
+
+Please supply your own `NCBI_API_KEY` for production use and update `email`/`tool` in `src/pubmed-client.ts` to identify your deployment.
+
+---
+
+## 📝 License
+
+MIT — see [LICENSE](./LICENSE).
