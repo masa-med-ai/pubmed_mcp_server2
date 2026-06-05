@@ -145,7 +145,7 @@ export function registerTools(server: McpServer, apiKey?: string) {
         metadata: {
           journal: a.journal,
           year: a.year,
-          authors: a.authors,
+          authors: capAuthors(a.authors),
           doi: a.doi,
         },
       };
@@ -174,9 +174,10 @@ export function registerTools(server: McpServer, apiKey?: string) {
       }
 
       const abstracts = await client.getAbstracts(unique);
+      const capped = abstracts.map((a) => ({ ...a, authors: capAuthors(a.authors) }));
       const items = include_abstract
-        ? abstracts
-        : abstracts.map(({ abstract: _abs, ...rest }) => rest);
+        ? capped
+        : capped.map(({ abstract: _abs, ...rest }) => rest);
 
       return { content: [{ type: "text" as const, text: JSON.stringify({ items }) }] };
     }
@@ -475,6 +476,19 @@ export function registerTools(server: McpServer, apiKey?: string) {
 
 // ─── helpers ─────────────────────────────────────────────────────────
 
+/**
+ * Cap very long author lists to keep returned JSON compact.
+ *
+ * Consortium / multi-site trials can list dozens to hundreds of authors. When
+ * the list exceeds `max`, keep the first `keep` names and append "et al." so the
+ * model still gets the lead authors without flooding its context. Lists at or
+ * below `max` are returned unchanged.
+ */
+export function capAuthors(authors: string[], max = 30, keep = 10): string[] {
+  if (authors.length <= max) return authors;
+  return [...authors.slice(0, keep), "et al."];
+}
+
 export function shapeSearchResult(
   item: ExtendedSearchItem,
   mode: "minimal" | "compact" | "full",
@@ -510,7 +524,7 @@ export function shapeSearchResult(
   // full mode
   return {
     ...base,
-    authors: abs && abs.authors.length > 0 ? abs.authors : item.authors,
+    authors: capAuthors(abs && abs.authors.length > 0 ? abs.authors : item.authors),
     journal: item.journal,
     year: item.year,
     doi: item.doi,

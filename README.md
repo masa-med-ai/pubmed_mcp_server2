@@ -1,8 +1,17 @@
-# PubMed MCP Server v2.0.0
+# PubMed MCP Server v2.0.1
 
 A local **Model Context Protocol (MCP)** server that exposes the NCBI PubMed / PubMed Central / iCite APIs to MCP-compatible clients (Claude Desktop, MCP Inspector, etc.) over **stdio**.
 
 This version (`2.0.0`) is a complete rewrite of the tool layer to provide **feature parity with the remote OAuth-protected sibling project [`pubmed-mcp-remote-Oauth-`](https://github.com/masa061580/pubmed-mcp-remote-Oauth-)** — all 10 tools are identical in name, schema, and behavior. The local build simply drops OAuth and runs on stdio so it can be wired into Claude Desktop without authentication.
+
+---
+
+## 🐛 What's new in v2.0.1
+
+Patch release — bug fix and a safeguard for consortium papers.
+
+- **Fixed a hang on papers with huge collaborator lists.** Fetching articles such as PMID `25176015` (the PARADIGM-HF trial, with 12 authors plus **1,184 `<Investigator>` collaborators**) could peg a CPU core for minutes and freeze the MCP server. The author-parsing regex suffered **catastrophic backtracking (ReDoS)** on the group-author element that has no `<LastName>`/`<ForeName>`. Author parsing is now scoped to the `<AuthorList>` block and processes each `<Author>` element in isolation — the same article now parses in ~4 ms and correctly returns 12 authors (plus the `<CollectiveName>` group author), excluding the 1,184 investigators.
+- **Long author lists are capped.** When an article lists **more than 30 authors**, `fetch`, `fetch_batch`, and `search` (full mode) now return the **first 10 names followed by `"et al."`** to keep the JSON compact. Articles with 30 or fewer authors are returned in full, unchanged.
 
 ---
 
