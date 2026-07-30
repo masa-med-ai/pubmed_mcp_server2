@@ -82,6 +82,20 @@ The key is tied to your NCBI account; revoke or rotate it any time from the same
 
 ## 🚀 Installation
 
+### Easiest: MCP Bundle (.mcpb) for Claude Desktop
+
+Download [`pubmed-mcp-server.mcpb`](https://github.com/masa-med-ai/pubmed_mcp_server2/raw/main/pubmed-mcp-server.mcpb) from this repo and **double-click it** (or drag it onto Claude Desktop → Settings → Extensions). Claude Desktop installs the server with all dependencies bundled — no Node.js setup, no config-file editing. You can optionally enter an NCBI API key in the extension settings to raise the rate limit from 3 to 10 requests/sec.
+
+To rebuild the bundle from source:
+
+```bash
+npm install && npm run build
+npm prune --omit=dev
+npx -y @anthropic-ai/mcpb pack . pubmed-mcp-server.mcpb
+```
+
+### Via npm
+
 The server is published on npm as [`pubmed_mcp_server2`](https://www.npmjs.com/package/pubmed_mcp_server2). For Claude Desktop you don't need to install anything manually — `npx -y pubmed_mcp_server2` will fetch and run it.
 
 If you'd rather build from source (development):
