@@ -403,7 +403,12 @@ export function registerTools(server: McpServer, apiKey?: string) {
       if (operations.includes("abstract")) {
         tasks.push({
           name: "abstract",
-          run: async () => ({ items: await client.getAbstracts(unique) }),
+          run: async () => ({
+            items: (await client.getAbstracts(unique)).map((a) => ({
+              ...a,
+              authors: capAuthors(a.authors),
+            })),
+          }),
         });
       }
       if (operations.includes("citations")) {

@@ -1,6 +1,6 @@
 {
   "name": "pubmed_mcp_server2",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Local stdio MCP server for PubMed with 10 tools: search, fetch, fetch_batch, get_full_text, count, find_similar_articles, export_to_ris, get_citation_counts, convert_ids, batch_process",
   "main": "dist/index.js",
   "type": "module",
@@ -14,12 +14,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/masa061580/pubmed_mcp_server2.git"
+    "url": "git+https://github.com/masa-med-ai/pubmed_mcp_server2.git"
   },
   "bugs": {
-    "url": "https://github.com/masa061580/pubmed_mcp_server2/issues"
+    "url": "https://github.com/masa-med-ai/pubmed_mcp_server2/issues"
   },
-  "homepage": "https://github.com/masa061580/pubmed_mcp_server2#readme",
+  "homepage": "https://github.com/masa-med-ai/pubmed_mcp_server2#readme",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",

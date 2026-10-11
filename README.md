@@ -1,8 +1,16 @@
-# PubMed MCP Server v2.0.1
+# PubMed MCP Server v2.0.2
 
 A local **Model Context Protocol (MCP)** server that exposes the NCBI PubMed / PubMed Central / iCite APIs to MCP-compatible clients (Claude Desktop, MCP Inspector, etc.) over **stdio**.
 
-This version (`2.0.0`) is a complete rewrite of the tool layer to provide **feature parity with the remote OAuth-protected sibling project [`pubmed-mcp-remote-Oauth-`](https://github.com/masa061580/pubmed-mcp-remote-Oauth-)** — all 10 tools are identical in name, schema, and behavior. The local build simply drops OAuth and runs on stdio so it can be wired into Claude Desktop without authentication.
+This version (`2.0.0`) is a complete rewrite of the tool layer to provide **feature parity with the remote OAuth-protected sibling project [`pubmed-mcp-remote-Oauth-`](https://github.com/masa061580/pubmed-mcp-remote-Oauth-)** — all 10 PubMed tools are identical in name, schema, and behavior (the remote server additionally exposes two tools for managing per-user NCBI API keys, which a single-user local server doesn't need). The local build simply drops OAuth and runs on stdio so it can be wired into Claude Desktop without authentication.
+
+---
+
+## 🐛 What's new in v2.0.2
+
+Patch release — completes the author-list cap introduced in v2.0.1.
+
+- **`batch_process` now caps long author lists too.** In v2.0.1 the cap (first 10 names + `"et al."` when an article has more than 30 authors) applied to `fetch`, `fetch_batch`, and `search` (full mode), but the `abstract` operation of `batch_process` still returned every author. It now applies the same cap, matching the remote OAuth server.
 
 ---
 
@@ -101,7 +109,7 @@ The server is published on npm as [`pubmed_mcp_server2`](https://www.npmjs.com/p
 If you'd rather build from source (development):
 
 ```bash
-git clone https://github.com/masa061580/pubmed_mcp_server2.git
+git clone https://github.com/masa-med-ai/pubmed_mcp_server2.git
 cd pubmed_mcp_server2
 npm install
 npm run build      # produces dist/index.js
@@ -178,6 +186,19 @@ Notes:
 ```bash
 tail -f "$HOME/Library/Logs/Claude/mcp-server-pubmed.log"
 ```
+
+---
+
+## 💻 Claude Code configuration
+
+```bash
+claude mcp add pubmed -- npx -y pubmed_mcp_server2
+
+# With an NCBI API key:
+claude mcp add pubmed -e NCBI_API_KEY=your_key -- npx -y pubmed_mcp_server2
+```
+
+Add `--scope user` to make it available in every project. Run `/mcp` inside Claude Code to confirm the server is connected.
 
 ---
 
