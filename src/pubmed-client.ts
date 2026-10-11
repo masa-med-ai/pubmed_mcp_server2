@@ -428,17 +428,24 @@ export class PubMedClient {
 
   private parseAbstractsXml(xml: string): AbstractItem[] {
     const items: AbstractItem[] = [];
-    const articles = xml.split("<PubmedArticle>");
+    // PubMed returns journal articles as <PubmedArticle> and NCBI Bookshelf
+    // records (e.g. HTA reports) as <PubmedBookArticle>; parse both so book
+    // records are not silently dropped from fetch / fetch_batch results.
+    const articles = xml.split(/<PubmedArticle>|<PubmedBookArticle>/);
 
     for (let i = 1; i < articles.length; i++) {
       const article = articles[i];
-      const endIdx = article.indexOf("</PubmedArticle>");
+      const endIdx = article.search(/<\/PubmedArticle>|<\/PubmedBookArticle>/);
       const content = endIdx >= 0 ? article.substring(0, endIdx) : article;
+      const isBook = content.includes("<BookDocument>");
 
       const pmid = this.extractTag(content, "PMID");
       if (!pmid) continue;
 
-      const titleRaw = this.extractTag(content, "ArticleTitle") || "No title available";
+      const titleRaw =
+        this.extractTag(content, "ArticleTitle") ||
+        (isBook ? this.extractTag(content, "BookTitle") : null) ||
+        "No title available";
       const title = htmlDecode(this.stripTags(titleRaw));
 
       // Abstract (handle structured)
@@ -453,11 +460,28 @@ export class PubMedClient {
       const abstract = abstractTexts.length > 0 ? abstractTexts.join("\n") : "No abstract available";
 
       const journal = htmlDecode(
-        this.extractNestedTag(content, "Journal", "Title") || "Unknown journal"
+        this.stripTags(
+        this.extractNestedTag(content, "Journal", "Title") ||
+          (isBook
+            ? this.extractTag(content, "CollectionTitle") ||
+              (this.extractTag(content, "ArticleTitle") ? this.extractTag(content, "BookTitle") : null) ||
+              this.extractTag(content, "PublisherName")
+            : null) ||
+          "Unknown journal"
+        )
       );
       const year = this.extractNestedTag(content, "PubDate", "Year") || "Unknown";
 
-      const authors = this.parseAuthors(content);
+      // Book chapters list the parent book's editors inside <Book> before the
+      // chapter's own authors, so parse authors outside <Book> first. Fall back
+      // to the book-level list only when it names authors, never editors.
+      let authors = this.parseAuthors(
+        isBook ? content.replace(/<Book\b[^>]*>[\s\S]*?<\/Book>/, "") : content
+      );
+      if (isBook && authors.length === 0) {
+        const bookBlock = content.match(/<Book\b[^>]*>[\s\S]*?<\/Book>/)?.[0] ?? "";
+        if (!/<AuthorList[^>]*Type="editors"/.test(bookBlock)) authors = this.parseAuthors(bookBlock);
+      }
 
       let doi: string | null = null;
       const doiMatch = content.match(/<ArticleId\s+IdType="doi">([\s\S]*?)<\/ArticleId>/);
@@ -470,7 +494,7 @@ export class PubMedClient {
       }
 
       const pubTypes: string[] = [];
-      const ptRegex = /<PublicationType[^>]*>([\s\S]*?)<\/PublicationType>/g;
+      const ptRegex = /<PublicationType\b[^>]*>([\s\S]*?)<\/PublicationType>/g;
       while ((match = ptRegex.exec(content)) !== null) {
         pubTypes.push(match[1].trim());
       }

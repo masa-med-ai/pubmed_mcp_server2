@@ -1,8 +1,17 @@
-# PubMed MCP Server v2.0.2
+# PubMed MCP Server v2.0.3
 
 A local **Model Context Protocol (MCP)** server that exposes the NCBI PubMed / PubMed Central / iCite APIs to MCP-compatible clients (Claude Desktop, MCP Inspector, etc.) over **stdio**.
 
 This version (`2.0.0`) is a complete rewrite of the tool layer to provide **feature parity with the remote OAuth-protected sibling project [`pubmed-mcp-remote-Oauth-`](https://github.com/masa061580/pubmed-mcp-remote-Oauth-)** — all 10 PubMed tools are identical in name, schema, and behavior (the remote server additionally exposes two tools for managing per-user NCBI API keys, which a single-user local server doesn't need). The local build simply drops OAuth and runs on stdio so it can be wired into Claude Desktop without authentication.
+
+---
+
+## 🐛 What's new in v2.0.3
+
+Patch release — fixes `publication_types` parsing and adds support for NCBI Bookshelf records.
+
+- **The first element of `publication_types` no longer contains a raw XML tag.** The publication-type regex also matched the enclosing `<PublicationTypeList>` element, so the first entry came back as `<PublicationType UI="D016428">Journal Article` instead of `Journal Article`. Exact-match checks (for example, detecting `Retracted Publication` or `Randomized Controlled Trial`) could fail on that entry. Affects `search` (`output_mode: "full"`), `fetch_batch`, and `batch_process` (abstract operation).
+- **NCBI Bookshelf records are no longer silently dropped.** PubMed returns book records (for example, HTA reports such as CADTH Health Technology Reviews) as `<PubmedBookArticle>` rather than `<PubmedArticle>`. They were skipped, so `fetch` reported "No abstract found" and `fetch_batch` returned fewer items than requested. They are now parsed: the title falls back to the book title, and `journal` to the collection title, the book title (for chapters), or the publisher. For book chapters, `authors` are the chapter authors; a book's editors are never reported as authors. `year` is the book's publication year, which for continuously updated books such as GeneReviews can be much older than the chapter.
 
 ---
 
