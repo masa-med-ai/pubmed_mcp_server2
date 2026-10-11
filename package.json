@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "type": "module",
   "bin": {
-    "pubmed-mcp-server": "./dist/index.js"
+    "pubmed-mcp-server": "dist/index.js"
   },
   "files": [
     "dist/**/*",
