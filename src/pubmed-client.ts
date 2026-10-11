@@ -81,6 +81,7 @@ export interface SearchPubmedResult {
   retstart: number;
   query_translation: string;
   final_term: string;
+  warnings: string[];
   items: ExtendedSearchItem[];
 }
 
@@ -153,6 +154,7 @@ export interface ConvertIdsItem {
   pmcid?: string | null;
   doi?: string | null;
   error?: string;
+  note?: string;
 }
 
 export interface ConvertIdsResult {
@@ -302,6 +304,7 @@ export class PubMedClient {
     const pmids: string[] = result.idlist || [];
     const total = parseInt(result.count || "0", 10);
     const queryTranslation: string = result.querytranslation || "";
+    const warnings = extractEsearchWarnings(result);
 
     if (pmids.length === 0 || !options.withSummary) {
       // Minimal: skip ESummary entirely
@@ -311,6 +314,7 @@ export class PubMedClient {
         retstart,
         query_translation: queryTranslation,
         final_term: finalTerm,
+        warnings,
         items: pmids.map((pmid) => ({
           pmid,
           pmcid: null,
@@ -377,6 +381,7 @@ export class PubMedClient {
       retstart,
       query_translation: queryTranslation,
       final_term: finalTerm,
+      warnings,
       items,
     };
   }
@@ -395,16 +400,12 @@ export class PubMedClient {
     if (!data.esearchresult) throw new Error("Invalid response from esearch");
 
     const result = data.esearchresult;
-    const warnings: string[] = [];
-    const warningList = result.warninglist || {};
-    if (warningList.phraseignored) warnings.push(...warningList.phraseignored);
-    if (warningList.quotedphrasefound) warnings.push(...warningList.quotedphrasefound);
 
     return {
       query,
       count: parseInt(result.count || "0", 10),
       query_translation: result.querytranslation || "",
-      warnings,
+      warnings: extractEsearchWarnings(result),
     };
   }
 
@@ -932,6 +933,27 @@ export class PubMedClient {
         byInput.set(input, item);
       }
 
+      // The ID Converter only knows PMC articles. Resolve the rest via PubMed.
+      const unresolved = cleaned.filter((id) => {
+        const it = byInput.get(id);
+        return !it || it.error || !it.pmid;
+      });
+      if (unresolved.length > 0 && (fromType === "doi" || fromType === "pmid")) {
+        try {
+          const resolved = await this.resolveIdsViaPubmed(unresolved, fromType);
+          for (const id of unresolved) {
+            const rec = resolved.get(id);
+            if (rec) {
+              byInput.set(id, { input: id, ...rec, note: "Resolved via PubMed (not in PMC)" });
+            } else {
+              byInput.set(id, { ...(byInput.get(id) ?? { input: id }), error: "Not found in PMC or PubMed" });
+            }
+          }
+        } catch {
+          // Keep the ID Converter results; unresolved IDs are reported as failed below.
+        }
+      }
+
       for (const id of cleaned) {
         const item = byInput.get(id) ?? { input: id, error: "Not found" };
         // If a specific to_type was requested, judge success on that field.
@@ -940,7 +962,10 @@ export class PubMedClient {
         if (ok) {
           conversions.push(item);
         } else {
-          conversions.push({ ...item, error: item.error || `No ${toType ?? "mapping"} available` });
+          const reason =
+            item.error ||
+            (toType === "pmcid" && item.pmid ? "Not in PMC (no PMCID)" : `No ${toType ?? "mapping"} available`);
+          conversions.push({ ...item, error: reason });
           failedIds.push(id);
         }
       }
@@ -966,6 +991,63 @@ export class PubMedClient {
         failedIds,
       };
     }
+  }
+
+  /**
+   * Look up PMIDs or DOIs in PubMed itself (ESearch + ESummary) and return
+   * pmid/pmcid/doi for each input that matched. DOIs are matched exactly
+   * (case-insensitive) against ESummary articleids to avoid fuzzy hits.
+   */
+  private async resolveIdsViaPubmed(
+    ids: string[],
+    fromType: "doi" | "pmid"
+  ): Promise<Map<string, { pmid: string; pmcid: string | null; doi: string | null }>> {
+    const out = new Map<string, { pmid: string; pmcid: string | null; doi: string | null }>();
+
+    for (const part of chunkArray(ids, 50)) {
+      let pmids: string[];
+      if (fromType === "pmid") {
+        pmids = part.filter((p) => /^\d+$/.test(p));
+      } else {
+        const term = part.map((d) => `"${d.replace(/"/g, "")}"[doi]`).join(" OR ");
+        const res = await this.makeRequest(
+          `${NCBI_BASE_URL}/esearch.fcgi`,
+          { db: "pubmed", term, retmode: "json", retmax: String(part.length * 2) },
+          "POST"
+        );
+        const data = (await res.json()) as any;
+        pmids = data.esearchresult?.idlist || [];
+      }
+      if (pmids.length === 0) continue;
+
+      const sumRes = await this.makeRequest(
+        `${NCBI_BASE_URL}/esummary.fcgi`,
+        { db: "pubmed", id: pmids.join(","), retmode: "json" },
+        "POST"
+      );
+      const sum = (await sumRes.json()) as any;
+      const byDoi = new Map<string, { pmid: string; pmcid: string | null; doi: string | null }>();
+      for (const pmid of pmids) {
+        const paper = sum.result?.[pmid];
+        if (!paper || paper.error) continue;
+        let pmcid: string | null = null;
+        let doi: string | null = null;
+        for (const aid of paper.articleids || []) {
+          if (aid.idtype === "pmc") pmcid = aid.value;
+          if (aid.idtype === "doi") doi = aid.value;
+        }
+        const rec = { pmid, pmcid, doi };
+        if (fromType === "pmid") out.set(pmid, rec);
+        else if (doi) byDoi.set(doi.toLowerCase(), rec);
+      }
+      if (fromType === "doi") {
+        for (const d of part) {
+          const rec = byDoi.get(d.toLowerCase());
+          if (rec) out.set(d, rec);
+        }
+      }
+    }
+    return out;
   }
 
   // ─── XML Helpers ──────────────────────────────────────────────────
@@ -1024,6 +1106,22 @@ export class PubMedClient {
 }
 
 // ─── Module helpers ───────────────────────────────────────────────
+
+/**
+ * Collect ESearch errorlist/warninglist entries as readable messages, so an
+ * invalid tag or unknown phrase (e.g. `pmc[sb]`) does not look like a genuine
+ * zero-hit search.
+ */
+export function extractEsearchWarnings(result: any): string[] {
+  const out: string[] = [];
+  const errors = result?.errorlist || {};
+  const warns = result?.warninglist || {};
+  for (const p of errors.phrasesnotfound || []) out.push(`Phrase not found: ${p}`);
+  for (const f of errors.fieldsnotfound || []) out.push(`Field not found: ${f}`);
+  for (const p of warns.phrasesignored || []) out.push(`Phrase ignored: ${p}`);
+  for (const p of warns.quotedphrasesnotfound || []) out.push(`Quoted phrase not found: ${p}`);
+  return out;
+}
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];

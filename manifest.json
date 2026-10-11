@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "pubmed-mcp-server",
   "display_name": "PubMed MCP Server",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "PubMed / PMC / iCite search and citation tools for MCP clients (10 tools, stdio).",
   "long_description": "Local stdio MCP server exposing NCBI PubMed, PubMed Central and iCite APIs. Provides 10 tools: search (with MeSH, filters, pagination), fetch, fetch_batch, get_full_text (section-aware PMC full text), count, find_similar_articles, export_to_ris, get_citation_counts, convert_ids (PMID/PMCID/DOI), and batch_process. All tools return structured JSON. Optionally accepts an NCBI API key to raise the rate limit from 3 to 10 requests/sec.",
   "author": {

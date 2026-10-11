@@ -1,8 +1,18 @@
-# PubMed MCP Server v2.0.3
+# PubMed MCP Server v2.0.4
 
 A local **Model Context Protocol (MCP)** server that exposes the NCBI PubMed / PubMed Central / iCite APIs to MCP-compatible clients (Claude Desktop, MCP Inspector, etc.) over **stdio**.
 
 This version (`2.0.0`) is a complete rewrite of the tool layer to provide **feature parity with the remote OAuth-protected sibling project [`pubmed-mcp-remote-Oauth-`](https://github.com/masa061580/pubmed-mcp-remote-Oauth-)** — all 10 PubMed tools are identical in name, schema, and behavior (the remote server additionally exposes two tools for managing per-user NCBI API keys, which a single-user local server doesn't need). The local build simply drops OAuth and runs on stdio so it can be wired into Claude Desktop without authentication.
+
+---
+
+## 🐛 What's new in v2.0.4
+
+Patch release — `convert_ids` handles articles outside PMC, and query errors are reported.
+
+- **`convert_ids` now resolves PMIDs and DOIs of articles that are not in PMC.** The NCBI ID Converter only knows PMC articles, so DOI → PMID failed with `Identifier not found in PMC` for most journal articles (for example, Gastroenterology or Annals of Internal Medicine papers). Unresolved PMIDs/DOIs are now looked up in PubMed itself, matching DOIs exactly; these results carry `note: "Resolved via PubMed (not in PMC)"`. Requests for a PMCID of such an article fail with `Not in PMC (no PMCID)`, and IDs found in neither source fail with `Not found in PMC or PubMed`.
+- **`count` and `search` now return PubMed query errors in `warnings`.** The previous code read misspelled ESearch keys and ignored `errorlist`, so `warnings` was always empty and an invalid query (for example, `pmc[sb]` instead of `"pubmed pmc"[sb]`) looked like a genuine zero-hit search. `warnings` now lists `Phrase not found`, `Field not found`, `Phrase ignored`, and `Quoted phrase not found` entries. `search` previously had no `warnings` field.
+- **Clarified `free_full_text`.** The tool description now states that this filter also matches articles that are free only on the publisher site (no PMCID, so `get_full_text` cannot retrieve them), and that `"pubmed pmc"[sb]` restricts results to PMC-hosted articles.
 
 ---
 
@@ -58,15 +68,15 @@ All tools return JSON in `content[0].text`.
 
 | # | Tool | Purpose |
 |---|---|---|
-| 1 | **`search`** | PubMed search with MeSH support, pagination (`retmax`/`retstart`), sort (`relevance`/`pub_date`/`first_author`), `output_mode` (minimal/compact/full), and structured `filters` |
+| 1 | **`search`** | PubMed search with MeSH support, pagination (`retmax`/`retstart`), sort (`relevance`/`pub_date`/`first_author`), `output_mode` (minimal/compact/full), and structured `filters`. Returns `warnings` for query errors (unknown phrase/field tag). Note: `free_full_text` also matches publisher-hosted free articles; add `"pubmed pmc"[sb]` to restrict to PMC |
 | 2 | **`fetch`** | Single-PMID abstract (OpenAI MCP–compliant document shape) |
 | 3 | **`fetch_batch`** | Multiple-PMID abstracts in one call; optional `include_abstract` flag |
 | 4 | **`get_full_text`** | PMC full text via JATS XML; section filter `[abstract, introduction, methods, results, discussion, conclusions, references, all]`; max 20 PMCIDs |
-| 5 | **`count`** | Result count only — fast query refinement |
+| 5 | **`count`** | Result count only — fast query refinement; returns `warnings` for query errors |
 | 6 | **`find_similar_articles`** | NCBI `elink pubmed_pubmed` similarity |
 | 7 | **`export_to_ris`** | Compact RIS for EndNote/Zotero/Mendeley (citation manager auto-fetches full metadata via PMID) |
 | 8 | **`get_citation_counts`** | iCite (default, counts only) or `elink` (PubMed-internal, with citing PMIDs) |
-| 9 | **`convert_ids`** | PMID ↔ PMCID ↔ DOI via NCBI ID Converter API |
+| 9 | **`convert_ids`** | PMID ↔ PMCID ↔ DOI via NCBI ID Converter API, with PubMed fallback for articles not in PMC |
 | 10 | **`batch_process`** | Run any subset of `[abstract, citations, similar, ris_export, full_text]` against the same PMID set with bounded concurrency |
 
 For exact input/output schemas, run `tools/list` via MCP Inspector or check `src/tools.ts`.

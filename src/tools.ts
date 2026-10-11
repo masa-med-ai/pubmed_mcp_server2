@@ -38,7 +38,9 @@ export function registerTools(server: McpServer, apiKey?: string) {
     "Search PubMed with MeSH support, structured filters, pagination, and selectable output verbosity. " +
       "output_mode=minimal returns id/title/url/full_text_available only (legacy-compatible); " +
       "compact (default) adds authors/journal/year/doi/pmcid; " +
-      "full additionally includes abstract/mesh_terms/publication_types.",
+      "full additionally includes abstract/mesh_terms/publication_types. " +
+      "full_text_available=true means a PMCID exists (usable with get_full_text). " +
+      "warnings lists PubMed query errors (e.g. unknown phrase or field tag) — check it when total is 0.",
     {
       query: z.string().describe("Search query string with MeSH/PubMed syntax support"),
       retmax: z
@@ -63,7 +65,9 @@ export function registerTools(server: McpServer, apiKey?: string) {
         .default("compact")
         .describe("Output verbosity: minimal | compact (default) | full"),
       filters: SEARCH_FILTERS_SCHEMA.describe(
-        "Structured filters AND-ed onto the query: date_range, publication_types, languages (ISO-3), humans_only, has_abstract, free_full_text"
+        "Structured filters AND-ed onto the query: date_range, publication_types, languages (ISO-3), humans_only, has_abstract, free_full_text. " +
+          "free_full_text uses PubMed's \"free full text\" subset, which also includes articles free only on the publisher site (no PMCID). " +
+          "To restrict to PMC-hosted articles retrievable by get_full_text, add \"pubmed pmc\"[sb] to the query instead."
       ),
     },
     async ({ query, retmax, retstart, sort, output_mode, filters }) => {
@@ -73,6 +77,7 @@ export function registerTools(server: McpServer, apiKey?: string) {
         retstart,
         next_start: null as number | null,
         query_translation: "",
+        warnings: [] as string[],
         sort,
         results: [] as any[],
       };
@@ -110,6 +115,7 @@ export function registerTools(server: McpServer, apiKey?: string) {
         retstart,
         next_start: nextStart,
         query_translation: searchRes.query_translation,
+        warnings: searchRes.warnings,
         sort,
         results,
       };
@@ -220,7 +226,8 @@ export function registerTools(server: McpServer, apiKey?: string) {
 
   server.tool(
     "count",
-    "Get only the count of search results for query adjustment and optimization. Fast — retrieves no actual data. Useful for refining search strategies.",
+    "Get only the count of search results for query adjustment and optimization. Fast — retrieves no actual data. Useful for refining search strategies. " +
+      "warnings lists PubMed query errors (e.g. unknown phrase or field tag).",
     {
       query: z.string().describe("Search query string with MeSH/PubMed syntax support"),
     },
@@ -363,7 +370,8 @@ export function registerTools(server: McpServer, apiKey?: string) {
 
   server.tool(
     "convert_ids",
-    "Convert between PMID, PMCID, and DOI identifiers using NCBI ID Converter API.",
+    "Convert between PMID, PMCID, and DOI identifiers using NCBI ID Converter API. " +
+      "PMIDs/DOIs of articles not in PMC are resolved via PubMed as a fallback; such articles have no PMCID.",
     {
       from_type: z.enum(["pmid", "pmcid", "doi"]).describe("Type of input identifiers"),
       to_type: z.enum(["pmid", "pmcid", "doi"]).describe("Desired output identifier type"),
