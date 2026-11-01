@@ -341,19 +341,23 @@ export function registerTools(server: McpServer, apiKey?: string) {
 
   server.tool(
     "get_citation_counts",
-    "Get citation counts for PMIDs. Default source is iCite (counts only, includes citations from outside PubMed). Set citing_source='pubmed' for elink-based PubMed-internal citations and to retrieve citing PMIDs (useful for backward snowballing).",
+    "Get citation counts for PMIDs. Default source is iCite (counts plus relative citation ratio and other metrics, includes citations from outside PubMed; set include_references for referenced PMIDs). Set citing_source='pubmed' for elink-based PubMed-internal citations and to retrieve citing PMIDs (useful for forward snowballing).",
     {
       pmids: z.array(z.string()).describe("List of PubMed IDs (PMIDs), max 1000"),
       citing_source: z
         .enum(["icite", "pubmed"])
         .default("icite")
-        .describe("'icite' (default, counts only) or 'pubmed' (elink, includes citing PMIDs)"),
+        .describe("'icite' (default, counts and metrics) or 'pubmed' (elink, includes citing PMIDs)"),
       include_citing_pmids: z
         .boolean()
         .default(false)
         .describe("If true and citing_source='pubmed', include the list of citing PMIDs"),
+      include_references: z
+        .boolean()
+        .default(false)
+        .describe("If true and citing_source='icite', include the PMIDs each paper references"),
     },
-    async ({ pmids, citing_source, include_citing_pmids }) => {
+    async ({ pmids, citing_source, include_citing_pmids, include_references }) => {
       const unique = [...new Set(pmids.map((p) => p.trim()).filter(Boolean))];
       if (unique.length === 0) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ items: [] }) }] };
@@ -361,6 +365,7 @@ export function registerTools(server: McpServer, apiKey?: string) {
       const results = await client.getCitationCounts(unique, {
         source: citing_source,
         includeCitingPmids: include_citing_pmids,
+        includeReferences: include_references,
       });
       return { content: [{ type: "text" as const, text: JSON.stringify({ items: results }) }] };
     }

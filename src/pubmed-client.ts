@@ -11,6 +11,7 @@ const htmlDecode = he.decode;
 const NCBI_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 const PMC_OA_URL = "https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi";
 const ICITE_API_URL = "https://icite.od.nih.gov/api/pubs";
+const ICITE_CHUNK_SIZE = 200;
 const ID_CONVERTER_URL = "https://pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/";
 
 const TOOL_NAME = "PubMedMCPServer";
@@ -137,11 +138,23 @@ export interface SimilarArticle {
   full_text_available: boolean;
 }
 
+function roundMetric(value: number | null | undefined): number | null {
+  return value == null ? null : Math.round(value * 100) / 100;
+}
+
 export interface CitationItem {
   pmid: string;
   citation_count: number | null;
   citing_pmids?: string[];
   source?: "icite" | "pubmed";
+  year?: number | null;
+  relative_citation_ratio?: number | null;
+  nih_percentile?: number | null;
+  citations_per_year?: number | null;
+  is_clinical?: boolean | null;
+  is_research_article?: boolean | null;
+  provisional?: boolean | null;
+  references?: string[];
   error?: string;
   note?: string;
 }
@@ -783,7 +796,11 @@ export class PubMedClient {
 
   async getCitationCounts(
     pmids: string[],
-    options: { source?: "icite" | "pubmed"; includeCitingPmids?: boolean } = {}
+    options: {
+      source?: "icite" | "pubmed";
+      includeCitingPmids?: boolean;
+      includeReferences?: boolean;
+    } = {}
   ): Promise<CitationItem[]> {
     if (pmids.length === 0) return [];
     const source = options.source ?? "icite";
@@ -792,8 +809,19 @@ export class PubMedClient {
       return this.getCitationsViaElink(pmids, options.includeCitingPmids ?? true);
     }
 
-    // iCite (default — counts only).
-    const pmidsStr = pmids.slice(0, 1000).join(",");
+    // iCite (default — counts and field-normalized metrics).
+    // Long GET URLs are rejected with HTTP 413, so request in chunks.
+    const requested = pmids.slice(0, 1000);
+    const results: CitationItem[] = [];
+    for (let i = 0; i < requested.length; i += ICITE_CHUNK_SIZE) {
+      const chunk = requested.slice(i, i + ICITE_CHUNK_SIZE);
+      results.push(...(await this.getIciteChunk(chunk, options.includeReferences ?? false)));
+    }
+    return results;
+  }
+
+  private async getIciteChunk(pmids: string[], includeReferences: boolean): Promise<CitationItem[]> {
+    const pmidsStr = pmids.join(",");
     try {
       const url = `${ICITE_API_URL}?pmids=${encodeURIComponent(pmidsStr)}&format=json`;
       const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
@@ -812,7 +840,15 @@ export class PubMedClient {
           pmid: String(item.pmid || ""),
           citation_count: null,
           source: "icite",
+          year: item.year ?? null,
+          relative_citation_ratio: roundMetric(item.relative_citation_ratio),
+          nih_percentile: item.nih_percentile ?? null,
+          citations_per_year: roundMetric(item.citations_per_year),
+          is_clinical: item.is_clinical ?? null,
+          is_research_article: item.is_research_article ?? null,
+          provisional: item.provisional ?? null,
         };
+        if (includeReferences) result.references = (item.references || []).map(String);
         if (item.citation_count != null) result.citation_count = item.citation_count;
         else result.note = "Citation data not available";
         results.push(result);

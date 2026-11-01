@@ -1,8 +1,17 @@
-# PubMed MCP Server v2.0.4
+# PubMed MCP Server v2.1.0
 
 A local **Model Context Protocol (MCP)** server that exposes the NCBI PubMed / PubMed Central / iCite APIs to MCP-compatible clients (Claude Desktop, MCP Inspector, etc.) over **stdio**.
 
 This version (`2.0.0`) is a complete rewrite of the tool layer to provide **feature parity with the remote OAuth-protected sibling project [`pubmed-mcp-remote-Oauth-`](https://github.com/masa061580/pubmed-mcp-remote-Oauth-)** — all 10 PubMed tools are identical in name, schema, and behavior (the remote server additionally exposes two tools for managing per-user NCBI API keys, which a single-user local server doesn't need). The local build simply drops OAuth and runs on stdio so it can be wired into Claude Desktop without authentication.
+
+---
+
+## ✨ What's new in v2.1.0
+
+Minor release — `get_citation_counts` returns impact metrics, and large iCite requests work.
+
+- **`get_citation_counts` returns iCite metrics.** With the default `icite` source, each item now includes `year`, `relative_citation_ratio`, `nih_percentile`, `citations_per_year`, `is_clinical`, `is_research_article`, and `provisional`. `relative_citation_ratio` and `citations_per_year` are rounded to two decimals. Set `include_references: true` to add the PMIDs each paper references. Existing fields are unchanged, and `batch_process` citations return the same fields.
+- **Fixed HTTP 413 on large iCite requests.** All PMIDs went into one GET URL, so about 400 or more PMIDs failed even though the tool accepts up to 1,000. Requests are now sent in chunks of 200.
 
 ---
 
@@ -75,7 +84,7 @@ All tools return JSON in `content[0].text`.
 | 5 | **`count`** | Result count only — fast query refinement; returns `warnings` for query errors |
 | 6 | **`find_similar_articles`** | NCBI `elink pubmed_pubmed` similarity |
 | 7 | **`export_to_ris`** | Compact RIS for EndNote/Zotero/Mendeley (citation manager auto-fetches full metadata via PMID) |
-| 8 | **`get_citation_counts`** | iCite (default, counts only) or `elink` (PubMed-internal, with citing PMIDs) |
+| 8 | **`get_citation_counts`** | iCite (default, counts, RCR and other metrics; `include_references` adds referenced PMIDs) or `elink` (PubMed-internal, with citing PMIDs) |
 | 9 | **`convert_ids`** | PMID ↔ PMCID ↔ DOI via NCBI ID Converter API, with PubMed fallback for articles not in PMC |
 | 10 | **`batch_process`** | Run any subset of `[abstract, citations, similar, ris_export, full_text]` against the same PMID set with bounded concurrency |
 
@@ -252,7 +261,7 @@ The server is **stateless** — every request creates fresh state. Safe for conc
 A remote, OAuth-protected variant deployed on Cloudflare Workers lives at:
 👉 [masa061580/pubmed-mcp-remote-Oauth-](https://github.com/masa061580/pubmed-mcp-remote-Oauth-)
 
-Both servers expose the **same 10 tools with identical schemas**, so client prompts/workflows are portable between them.
+Both servers expose the **same 10 tools**. The remote variant doesn't yet return the iCite metrics or `include_references` of `get_citation_counts`; the other schemas are identical, so client prompts/workflows are portable between them.
 
 ---
 
